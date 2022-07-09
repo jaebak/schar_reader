@@ -1,4 +1,6 @@
+#include <stdlib.h>
 #include <iostream>
+#include <string>
 #include <sstream>
 #include <sys/ioctl.h> // for _IO
 #include <fcntl.h> // For open
@@ -7,6 +9,7 @@
 #include <sys/mman.h> // mmap
 #include <stdint.h> // uint64_t
 #include "Spy.h"
+#include <getopt.h>
 
 #define SCHAR_IOCTL_BASE	0xbb
 #define SCHAR_RESET     	_IO(SCHAR_IOCTL_BASE, 0)
@@ -48,13 +51,22 @@ void printData(std::ostream& os, char* data, const size_t dataLength) {
   os.width(0);
 }
 
+int GetOptions(int argc, char *argv[]);
+namespace{
+  int schar_port = 2;
+}
+
 int main(int argc, char *argv[]) {
-  string deviceName = "/dev/schar2";
-  cout<<"Device name: "<<deviceName<<endl;
+  int error = GetOptions(argc, argv);
+  if (error) return error;
+
+  std::stringstream deviceName;
+  deviceName<<"/dev/schar"<<schar_port;;
+  cout<<"Device name: "<<deviceName.str()<<endl;
   
   emu::ldaq::reader::Base* deviceReader_ = NULL;
   uint32_t inputDataFormatInt_ = emu::ldaq::reader::Base::DMB;
-  deviceReader_ = new emu::ldaq::reader::Spy( deviceName, inputDataFormatInt_, true );
+  deviceReader_ = new emu::ldaq::reader::Spy( deviceName.str(), inputDataFormatInt_, true );
   dynamic_cast<emu::ldaq::reader::Spy*>( deviceReader_ )->setConditionForReset( emu::ldaq::reader::Spy::LoopOverwrite | emu::ldaq::reader::Spy::BufferOverwrite );
 
   cout<<"Do reset and Enable"<<endl;
@@ -71,4 +83,37 @@ int main(int argc, char *argv[]) {
   std::stringstream ss;
   printData(ss, data, dataLength);
   cout<<ss.str()<<endl;
+}
+
+int GetOptions(int argc, char *argv[]){
+  int readParameters = 0;
+  
+  while(true){
+    static struct option long_options[] = {
+      {"schar_port", required_argument, 0, 's'},
+      {0, 0, 0, 0}
+    };
+
+    char opt = -1;
+    int option_index;
+    opt = getopt_long(argc, argv, "s", long_options, &option_index);
+
+    if( opt == -1) break;
+
+    string optname;
+    switch(opt){
+    case 0:
+      optname = long_options[option_index].name;
+      if(optname == "schar_port"){
+        schar_port = atoi(optarg); readParameters++;
+      }else{
+        printf("Bad option! Found option name %s\n", optname.c_str());
+      }
+      break;
+    default:
+      printf("Bad option! getopt_long returned character code 0%o\n", opt);
+      break;
+    }
+  }
+  return 0;
 }
