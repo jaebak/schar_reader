@@ -1,32 +1,26 @@
-#include <stdlib.h>
-#include <iostream>
+#include <stdlib.h> // for atoi
 #include <string>
 #include <sstream>
-#include <sys/ioctl.h> // for _IO
-#include <fcntl.h> // For open
-#include <sys/stat.h> // For O_RDONLY
-#include <unistd.h> // read and write
-#include <sys/mman.h> // mmap
-#include <stdint.h> // uint64_t
 #include "Spy.h"
 #include <getopt.h>
 
-#define SCHAR_IOCTL_BASE	0xbb
-#define SCHAR_RESET     	_IO(SCHAR_IOCTL_BASE, 0)
+#define SCHAR_IOCTL_BASE	0xbb                     // from drivers/e1000_emu/eth_hook_2_daq/eth_hook_2_daq.h
+#define SCHAR_RESET     	_IO(SCHAR_IOCTL_BASE, 0) // from drivers/e1000_emu/eth_hook_2_daq/eth_hook_2_daq.h
+#define BIGPHYS_PAGES_2 5000                             // from drivers/e1000_emu/eth_hook_2_daq/eth_hook_2_daq.h
+#define RING_PAGES_2 1000                                // from drivers/e1000_emu/eth_hook_2_daq/eth_hook_2_daq.h
+#define MAXPACKET_2 9100                                 // from drivers/e1000_emu/eth_hook_2_daq/eth_hook_2_daq.h
+#define TAILPOS 80                                       // from drivers/e1000_emu/eth_hook_2_daq/eth_hook_2_daq.h
+#define MAXEVENT_2 180000                                // from drivers/e1000_emu/eth_hook_2_daq/eth_hook_2_daq.h
+#define RING_ENTRY_LENGTH 8                              // from drivers/e1000_emu/eth_hook_2_daq/eth_hook_2_daq.h
+#define TAILMEM 100                                      // from drivers/e1000_emu/eth_hook_2_daq/eth_hook_2_daq.h
 
-#define BIGPHYS_PAGES_2 5000 // from drivers/e1000_emu/eth_hook_2_daq/eth_hook_2_daq.h
-#define PAGE_SIZE 4096 // from drivers/dl2khook/eth_hook_2_nobigphysxxx/eth_hook_2.h or getconf PAGE_SIZE
-#define RING_PAGES_2 1000 // from drivers/e1000_emu/eth_hook_2_daq/eth_hook_2_daq.h
-#define MAXPACKET_2 9100 // from drivers/e1000_emu/eth_hook_2_daq/eth_hook_2_daq.h
-#define TAILPOS 80 // from drivers/e1000_emu/eth_hook_2_daq/eth_hook_2_daq.h
-#define MAXEVENT_2 180000 // from drivers/e1000_emu/eth_hook_2_daq/eth_hook_2_daq.h
-#define RING_ENTRY_LENGTH 8 // from drivers/e1000_emu/eth_hook_2_daq/eth_hook_2_daq.h
-#define TAILMEM 100 // from drivers/e1000_emu/eth_hook_2_daq/eth_hook_2_daq.h
+#define PAGE_SIZE 4096                                   // from command: `getconf PAGE_SIZE`
 
 using std::string;
 using std::cout;
 using std::endl;
 
+// Original print function. But seems to print sequence differently with file.
 void printData(std::ostream& os, char* data, const size_t dataLength) {
   uint16_t *shortData = reinterpret_cast<uint16_t *>(data);
   os << "_________________________________" << endl;
@@ -46,6 +40,30 @@ void printData(std::ostream& os, char* data, const size_t dataLength) {
       os << shortData[i+1] << " ";
       os.width(4); os.fill('0');
       os << shortData[i  ] << std::endl;
+    }
+  os<<std::dec;
+  os.width(0);
+}
+
+// Print function that matches format in file.
+void printDataFormat(std::ostream& os, char* data, const size_t dataLength) {
+  uint16_t *shortData = reinterpret_cast<uint16_t *>(data);
+  os << "_________________________________" << endl;
+  for(size_t i = 0; i < dataLength/2; i+=4)
+    {
+      os << std::dec;
+      os.width(8); os.fill(' ');
+      os << i;
+      os << "      ";
+      os << std::hex;
+      os.width(4); os.fill('0');
+      os << shortData[i  ] << " ";
+      os.width(4); os.fill('0');
+      os << shortData[i+1] << " ";
+      os.width(4); os.fill('0');
+      os << shortData[i+2] << " ";
+      os.width(4); os.fill('0');
+      os << shortData[i+3] << std::endl;
     }
   os<<std::dec;
   os.width(0);
@@ -81,13 +99,12 @@ int main(int argc, char *argv[]) {
 
   cout<<"Print data"<<endl;
   std::stringstream ss;
-  printData(ss, data, dataLength);
+  printDataFormat(ss, data, dataLength);
   cout<<ss.str()<<endl;
 }
 
 int GetOptions(int argc, char *argv[]){
-  int readParameters = 0;
-  
+  int error = 0;
   while(true){
     static struct option long_options[] = {
       {"schar_port", required_argument, 0, 's'},
@@ -102,18 +119,19 @@ int GetOptions(int argc, char *argv[]){
 
     string optname;
     switch(opt){
+    case 's':
+      schar_port = atoi(optarg);
+      break;
     case 0:
       optname = long_options[option_index].name;
-      if(optname == "schar_port"){
-        schar_port = atoi(optarg); readParameters++;
-      }else{
-        printf("Bad option! Found option name %s\n", optname.c_str());
-      }
+      printf("[Error] Bad option! Found option name %s\n", optname.c_str());
+      error = 1;
       break;
     default:
-      printf("Bad option! getopt_long returned character code 0%o\n", opt);
+      printf("[Error] Bad option! getopt_long returned character code 0%o\n", opt);
+      error = 1;
       break;
     }
   }
-  return 0;
+  return error;
 }
